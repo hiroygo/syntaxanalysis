@@ -45,7 +45,6 @@ public:
     const std::string m_string;
 
 private:
-    // 解析地点
     size_t m_currentPos = 0;
 };
 
@@ -101,8 +100,8 @@ Token ToToken(const char c)
     }
 }
 
-// p の現在の解析位置から Str を取得する
-// Str を取得できた場合、解析地点も移動する
+// p の現在の解析位置から <STR> を取得する
+// <STR> を取得できた場合、p の解析地点も移動する
 std::string ParseStr(StringToBeParsed &p)
 {
     std::string str;
@@ -132,7 +131,6 @@ Command NextCmd(StringToBeParsed &p)
             p.NextChar();
         }
 
-        // <STR> を読み取る
         const auto str = ParseStr(p);
         if (!str.empty())
         {
@@ -153,7 +151,6 @@ Command NextCmd(StringToBeParsed &p)
     }
 }
 
-// エラー時には std::runtime_error を発生させる
 Job ParseJob(StringToBeParsed &p)
 {
     Job job;
@@ -167,7 +164,6 @@ Job ParseJob(StringToBeParsed &p)
             p.NextChar();
         }
 
-        // <CMD> を読み取る
         Command cmd(NextCmd(p));
         if (!cmd.args.empty())
         {
