@@ -15,7 +15,7 @@
 class StringToBeParsed final
 {
 public:
-    StringToBeParsed(char *s) : m_string(s){};
+    StringToBeParsed(const char *s) : m_string(s){};
 
     // 次の文字に移動し、移動した結果を返す
     // すでに文字列末尾に到達していて、移動できない場合は '\n' を返す
@@ -204,38 +204,42 @@ Job ParseJob(StringToBeParsed &p)
     return job;
 }
 
-void PrintParsedJob(const Job &job)
+void TestParseJob(const char *in, const std::vector<std::vector<std::string>> expectCommands, const std::filesystem::path expectRedirectFilename)
 {
-    // コマンド一覧
-    for (const auto &cmd : job.commands)
+    StringToBeParsed str(in);
+    const auto testeeJob = ParseJob(str);
+
+    // コマンド一覧をテストする
+    std::vector<std::vector<std::string>> testeeCommands;
+    for (const auto &cmd : testeeJob.commands)
     {
-        printf("* ");
+        std::vector<std::string> args;
         for (const auto &arg : cmd.args)
         {
-            printf("%s,", arg.c_str());
+            args.push_back(arg);
         }
-        printf("\n");
+        testeeCommands.push_back(args);
     }
-
-    printf("\n");
-
-    if (!job.redirectFilename.empty())
+    if (testeeCommands != expectCommands)
     {
-        printf("* リダイレクト:%s\n", job.redirectFilename.c_str());
+        fprintf(stderr, "コマンドテスト失敗, %s\n", in);
+        return;
     }
+
+    // リダイレクトをテストする
+    if (testeeJob.redirectFilename != expectRedirectFilename)
+    {
+        fprintf(stderr, "リダイレクトテスト失敗, %s\n", in);
+        return;
+    }
+
+    // OK
+    printf("テスト成功, %s\n", in);
 }
 
-int main(int argc, char *argv[])
+int main()
 {
-    if (argc != 2)
-    {
-        fprintf(stderr, "引数の数は 1 つにしてください\n");
-        return EXIT_FAILURE;
-    }
-
-    StringToBeParsed arg(argv[1]);
-    const auto job = ParseJob(arg);
-    PrintParsedJob(job);
-
+    TestParseJob("cmd1 aaa    bbb     | cmd2 |cmd3|cmd4 xxx>out.txt", {{"cmd1", "aaa", "bbb"}, {"cmd2"}, {"cmd3"}, {"cmd4", "xxx"}}, "out.txt");
+    TestParseJob(" cmd1 > out.txt", {{"cmd1"}}, "out.txt");
     return EXIT_SUCCESS;
 }
