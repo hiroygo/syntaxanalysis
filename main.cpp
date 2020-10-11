@@ -1,237 +1,245 @@
-#include <cstdio>
-#include <cstdlib>
-#include <cctype>
-#include <stdexcept>
 #include <string>
+#include <vector>
+#include <filesystem>
+
+/*
+# bash の構文を BNF っぽく定義してみる
+* 右辺には正規表現を用いる
+* 文字列のクォーテーションには対応しない
+* `<JOB>       = <CMD>{'|'<CMD>}*{'>'<STR>}?'\n'`
+* `<CMD>       = <STR>{' '<STR>}*`
+* `<STR>       = [^ ]+`
+*/
+
+// 解析される文字列を表す
+class StringToBeParsed final
+{
+public:
+    StringToBeParsed(char *s) : m_string(s){};
+
+    // 次の文字に移動し、移動した結果を返す
+    // すでに文字列末尾に到達していて、移動できない場合は '\n' を返す
+    // m_string が空文字の場合は '\n' を返す
+    char NextChar()
+    {
+        // m_currentPos == m_string.size() のときに文字列末尾が判別できる
+        if (m_currentPos < m_string.size())
+        {
+            m_currentPos++;
+        }
+        return CurrentChar();
+    };
+
+    // すでに文字列末尾に到達していて、移動できない場合は '\n' を返す
+    // m_string が空文字の場合は '\n' を返す
+    char CurrentChar() const
+    {
+        if (m_string.empty() || m_currentPos == m_string.size())
+        {
+            return '\n';
+        }
+        return m_string.at(m_currentPos);
+    };
+
+public:
+    const std::string m_string;
+
+private:
+    // 解析地点
+    size_t m_currentPos = 0;
+};
+
+struct Command final
+{
+    std::vector<std::string> args;
+};
+
+struct Job final
+{
+    // コマンドが複数存在する場合は、パイプで連結する
+    // リダイレクトが指定されていない場合、最後のコマンド結果は標準出力に出力する
+    std::vector<Command> commands;
+
+    // リダイレクトが指定されている場合に設定される
+    // リダイレクトが指定されていない場合は空になる
+    std::filesystem::path redirectFilename;
+};
 
 enum Token
 {
-    Eof,
-    Number,
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Lpar,
-    Rpar,
-    Semic,
-    Others
+    Pipe,
+    Redirect,
+    StrSeparator,
+    Str,
+    End,
 };
 
-// 外部変数
-char ch;     // 記号
-Token token; // トークン
-int value;   // 数値
-
-void ReadNextChar(void)
+Token ToToken(const char c)
 {
-    ch = getchar();
-}
-
-char GetCurrentChar(void)
-{
-    return ch;
-}
-
-int ParseInteger()
-{
-    std::string value;
-    // 整数文字が連続する部分を読み取る
-    while (std::isdigit(GetCurrentChar()))
+    switch (c)
     {
-        value += GetCurrentChar();
-        ReadNextChar();
+    case '|':
+    {
+        return Token::Pipe;
     }
-    return atoi(value.c_str());
-}
-
-// トークンの切り分け
-// エラー時には std::runtime_error を投げる
-void AnalyzeNextToken(void)
-{
-    // 空白の読み飛ばし
-    while (std::isspace(GetCurrentChar()))
+    case '>':
     {
-        ReadNextChar();
+        return Token::Redirect;
     }
-
-    if (std::isdigit(GetCurrentChar()))
+    case ' ':
     {
-        token = Number;
-        value = ParseInteger();
+        return Token::StrSeparator;
     }
-    else
+    case '\n':
     {
-        const auto ch = GetCurrentChar();
-        switch (ch)
-        {
-        case '+':
-            token = Add;
-            ReadNextChar();
-            break;
-        case '-':
-            token = Sub;
-            ReadNextChar();
-            break;
-        case '*':
-            token = Mul;
-            ReadNextChar();
-            break;
-        case '/':
-            token = Div;
-            ReadNextChar();
-            break;
-        case '(':
-            token = Lpar;
-            ReadNextChar();
-            break;
-        case ')':
-            token = Rpar;
-            ReadNextChar();
-            break;
-        case ';':
-            token = Semic;
-            ReadNextChar();
-            break;
-        case EOF:
-            token = Eof;
-            break;
-        default:
-        {
-            std::string error = std::string("次のトークンは不正です, ") + std::to_string(ch);
-            throw std::runtime_error(error);
-        }
-        }
-    }
-}
-
-// 構文解析
-int expression(void);
-int term(void);
-int factor(void);
-
-// 式
-int expression(void)
-{
-    int val = term();
-    while (true)
-    {
-        switch (token)
-        {
-        case Add:
-            AnalyzeNextToken();
-            val += term();
-            break;
-        case Sub:
-            AnalyzeNextToken();
-            val -= term();
-            break;
-        default:
-            return val;
-        }
-    }
-}
-
-// 項
-int term(void)
-{
-    int val = factor();
-    while (true)
-    {
-        switch (token)
-        {
-        case Mul:
-            AnalyzeNextToken();
-            val *= factor();
-            break;
-        case Div:
-            AnalyzeNextToken();
-            val /= factor();
-            break;
-        default:
-            return val;
-        }
-    }
-}
-
-// 因子
-// エラー時には std::runtime_error を投げる
-int factor(void)
-{
-    switch (token)
-    {
-    case Token::Lpar:
-    {
-        AnalyzeNextToken();
-        int val = expression();
-        if (token == Rpar)
-        {
-            AnalyzeNextToken();
-        }
-        else
-        {
-            throw std::runtime_error("')' expected");
-        }
-        return val;
-    }
-    case Token::Number:
-    {
-        AnalyzeNextToken();
-        return value;
-    }
-    case Token::Add:
-    {
-        AnalyzeNextToken();
-        return factor();
-    }
-    case Token::Sub:
-    {
-        AnalyzeNextToken();
-        return -factor();
+        return Token::End;
     }
     default:
     {
-        throw std::runtime_error("unexpected token");
+        return Token::Str;
     }
     }
 }
 
-// エラー時には std::runtime_error を投げる
-void toplevel(void)
+// p の現在の解析位置から Str を取得する
+// Str を取得できた場合、解析地点も移動する
+std::string ParseStr(StringToBeParsed &p)
 {
-    int val = expression();
-    if (token == Semic)
+    std::string str;
+    while (true)
     {
-        printf("=> %d\nCalc> ", val);
-    }
-    else
-    {
-        std::runtime_error("invalid token");
-    }
-}
-
-int main(void)
-{
-    printf("Calc> ");
-    ReadNextChar();
-
-    try
-    {
-        while (true)
+        const auto c = p.CurrentChar();
+        if (ToToken(c) != Token::Str)
         {
-            AnalyzeNextToken();
-            if (token == Eof)
-            {
-                break;
-            }
-
-            toplevel();
+            return str;
         }
-        return EXIT_SUCCESS;
+
+        str += c;
+        p.NextChar();
     }
-    catch (const std::runtime_error &e)
+}
+
+Command NextCmd(StringToBeParsed &p)
+{
+    Command cmd;
+
+    // <STR> をすべて読み込む
+    while (true)
     {
-        fprintf(stderr, "%s\n", e.what());
+        // 連続するスペースを飛ばす
+        while (ToToken(p.CurrentChar()) == Token::StrSeparator)
+        {
+            p.NextChar();
+        }
+
+        // <STR> を読み取る
+        const auto str = ParseStr(p);
+        if (!str.empty())
+        {
+            cmd.args.push_back(str);
+        }
+
+        // <STR> の次のトークンを調べる
+        // スペースが存在するなら次の <STR> が存在するかもしれないので続行する
+        if (ToToken(p.CurrentChar()) == Token::StrSeparator)
+        {
+            // 次の <STR> の初めの文字に移動させる
+            p.NextChar();
+        }
+        else
+        {
+            return cmd;
+        }
+    }
+}
+
+// エラー時には std::runtime_error を発生させる
+Job ParseJob(StringToBeParsed &p)
+{
+    Job job;
+
+    // <CMD> をすべて読み込む
+    while (true)
+    {
+        // 連続するスペースを飛ばす
+        while (ToToken(p.CurrentChar()) == Token::StrSeparator)
+        {
+            p.NextChar();
+        }
+
+        // <CMD> を読み取る
+        Command cmd(NextCmd(p));
+        if (!cmd.args.empty())
+        {
+            job.commands.push_back(cmd);
+        }
+
+        // NextCmd は スペース+<STR> が連続する箇所を読み取るので、NextCmd 後に出現するトークンはスペース以外になる
+        // そのためスペースを飛ばす処理は不要になる
+
+        // <CMD> の次のトークンを調べる
+        // '|' が存在するなら次の <CMD> が存在するかもしれないので続行する
+        if (ToToken(p.CurrentChar()) == Token::Pipe)
+        {
+            // 次の <CMD> の初めの文字に移動させる
+            p.NextChar();
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    // リダイレクトを読み込む
+    if (ToToken(p.CurrentChar()) == Token::Redirect)
+    {
+        // '>' の次の文字に移動させる
+        p.NextChar();
+
+        // 連続するスペースを飛ばす
+        while (ToToken(p.CurrentChar()) == Token::StrSeparator)
+        {
+            p.NextChar();
+        }
+
+        job.redirectFilename = ParseStr(p);
+    }
+
+    return job;
+}
+
+void PrintParsedJob(const Job &job)
+{
+    // コマンド一覧
+    for (const auto &cmd : job.commands)
+    {
+        printf("* ");
+        for (const auto &arg : cmd.args)
+        {
+            printf("%s,", arg.c_str());
+        }
+        printf("\n");
+    }
+
+    printf("\n");
+
+    if (!job.redirectFilename.empty())
+    {
+        printf("* リダイレクト:%s\n", job.redirectFilename.c_str());
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2)
+    {
+        fprintf(stderr, "引数の数は 1 つにしてください\n");
         return EXIT_FAILURE;
     }
+
+    StringToBeParsed arg(argv[1]);
+    const auto job = ParseJob(arg);
+    PrintParsedJob(job);
+
+    return EXIT_SUCCESS;
 }
