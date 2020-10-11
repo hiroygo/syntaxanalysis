@@ -222,24 +222,47 @@ void TestParseJob(const char *in, const std::vector<std::vector<std::string>> ex
     }
     if (testeeCommands != expectCommands)
     {
-        fprintf(stderr, "コマンドテスト失敗, %s\n", in);
+        fprintf(stderr, "コマンドテスト失敗, \"%s\"\n", in);
         return;
     }
 
     // リダイレクトをテストする
     if (testeeJob.redirectFilename != expectRedirectFilename)
     {
-        fprintf(stderr, "リダイレクトテスト失敗, %s\n", in);
+        fprintf(stderr, "リダイレクトテスト失敗, \"%s\"\n", in);
         return;
     }
 
     // OK
-    printf("テスト成功, %s\n", in);
+    printf("テスト成功, \"%s\"\n", in);
 }
 
 int main()
 {
+    // 連続したスペースやトークンの間にスペースが出現する
     TestParseJob("cmd1 aaa    bbb     | cmd2 |cmd3|cmd4 xxx>out.txt", {{"cmd1", "aaa", "bbb"}, {"cmd2"}, {"cmd3"}, {"cmd4", "xxx"}}, "out.txt");
     TestParseJob(" cmd1 > out.txt", {{"cmd1"}}, "out.txt");
+
+    // パイプの右側にコマンドが存在しない
+    TestParseJob("cmd1|", {{"cmd1"}}, "");
+
+    // パイプの右側にリダイレクトが来る
+    TestParseJob("cmd1|>out.txt", {{"cmd1"}}, "out.txt");
+    TestParseJob("cmd1| > out.txt", {{"cmd1"}}, "out.txt");
+
+    // パイプの左側にコマンドが存在しない
+    TestParseJob("|cmd1", {{"cmd1"}}, "");
+
+    // パイプの左側にリダイレクトが来るとそこで読み込みは終わる
+    TestParseJob("cmd1>out.txt|cmd2", {{"cmd1"}}, "out.txt");
+    TestParseJob("cmd1 > out.txt|cmd2", {{"cmd1"}}, "out.txt");
+
+    // コマンドは存在せずリダイレクトのみ
+    TestParseJob("> out.txt", {}, "out.txt");
+    TestParseJob("| > out.txt", {}, "out.txt");
+
+    // 空文字列
+    TestParseJob("", {}, "");
+
     return EXIT_SUCCESS;
 }
